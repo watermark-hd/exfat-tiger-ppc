@@ -54,3 +54,7 @@ A few things that weren't documented anywhere I could find, in case they save so
 ## License
 
 The CLI tools bundled here are `fuse-exfat`, GPLv2 (see `LICENSE-GPLv2.txt`). The app source and icon in this repo (`src/`, `icon/`, `install.sh`) are MIT (see `LICENSE`).
+
+---
+
+※マウント・取り出しのメニューは、普段のAppleメニュー（画面左側）ではなく、画面右側のバッテリーなどが表示されているメニューバーエリアに出ます。ここは絶対に迷うところなので注意してください。
