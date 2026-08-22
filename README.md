@@ -2,7 +2,7 @@
 
 A small menu bar app + command line tools that let Mac OS X 10.4 Tiger (yes, PowerPC, yes, 2005) read and write exFAT drives.
 
-Mac OS X 10.4 Tiger（PowerPC）で exFAT ドライブの読み書きができるようになる、メニューバーアプリ＋コマンドラインツールです。
+Mac OS X 10.4 Tiger（PowerPC）で exFAT ドライブの読み書きができるようになる、GUI操作だけで完結するメニューバーアプリです。
 
 ![exFAT Menu icon](icon/icon-source-1024.png)
 
