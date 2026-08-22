@@ -3,3 +3,4 @@
 *.pyc
 /vendor/
 /dist/
+/DEV_NOTES.md
