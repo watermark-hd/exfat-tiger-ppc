@@ -23,6 +23,13 @@ Turns out the pieces to fix this already existed (old MacFUSE 1.7.0 built for 10
 - Mac OS X 10.4 Tiger, PowerPC (should also work on Intel Tiger, untested)
 - [MacFUSE Core 10.4-1.7.0](https://web.archive.org/web/20120127043005/http://macfuse.googlecode.com/files/MacFUSE-Core-10.4-1.7.0.dmg) installed first (this is the old Google-era MacFUSE, from the Wayback Machine — the "official" download you'll find today is a newer stub installer that just phones home to a server Google shut down years ago, and won't work)
 
+## Download
+
+Get the latest release (`exfat-tiger-ppc.zip`, app + CLI tools bundled together) here:
+
+- https://github.com/watermark-hd/exfat-tiger-ppc/releases/latest
+- On AquaFox or other old/vintage browsers, use this link instead (lighter page, same download): https://github.com/watermark-hd/exfat-tiger-ppc/releases/expanded_assets/v1.0
+
 ## Install
 
 1. Install MacFUSE Core 10.4-1.7.0 (link above), reboot if it asks.
