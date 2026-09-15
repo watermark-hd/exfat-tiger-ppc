@@ -54,6 +54,15 @@ A few things that weren't documented anywhere I could find, in case they save so
 - **Finder's own "MacFUSE Volume N" desktop icon for FUSE mounts is unreliable** — sometimes it shows up, sometimes it doesn't, and either way it can survive a clean unmount as a dead, empty-looking icon that needs a full logout to clear. Passing `-o nobrowse` to the mount stops MacFUSE from registering with DiskArbitration/Finder at all — but that option is silently dropped unless you also patch fuse-exfat's option passthrough allowlist (see `patches/`). The app makes its own plain Desktop symlink instead, which turned out to be 100% reliable where Finder's native integration wasn't.
 - Building this needs `autoconf`/`automake` that Tiger doesn't have — generate `./configure` on a modern Mac and copy the pre-generated tree over, or install Tigerbrew.
 
+## Changelog
+
+**v1.1** (2026-09-15)
+- Menu bar UI now shows English when the system language isn't Japanese (was Japanese-only before). / メニューバーのUIを英語対応（システム言語が日本語以外なら英語表示に、これまでは日本語決め打ちだった）
+- Fixed drives on GPT-partitioned disks (type `Microsoft Basic Data`) not being detected at all — `diskutil list` parsing assumed the type column was always a single word. / GPTパーティション上のドライブ（`Microsoft Basic Data`など）が検出されない不具合を修正（`diskutil list`のパースがtype列を常に1単語と仮定していたため）
+
+**v1.0** (2026-08-22)
+- Initial release. / 初回リリース。
+
 ## Credits
 
 - [relan/exfat](https://github.com/relan/exfat) — the actual exFAT filesystem implementation, GPLv2
