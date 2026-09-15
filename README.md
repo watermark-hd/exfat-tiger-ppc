@@ -23,6 +23,8 @@ Turns out the pieces to fix this already existed (old MacFUSE 1.7.0 built for 10
 - Mac OS X 10.4 Tiger, PowerPC (should also work on Intel Tiger, untested)
 - [MacFUSE Core 10.4-1.7.0](https://web.archive.org/web/20120127043005/http://macfuse.googlecode.com/files/MacFUSE-Core-10.4-1.7.0.dmg) installed first (this is the old Google-era MacFUSE, from the Wayback Machine — the "official" download you'll find today is a newer stub installer that just phones home to a server Google shut down years ago, and won't work)
 
+**Leopard (10.5)?** Untested — I don't have a 10.5 machine to try it on. The app and CLI tools themselves are plain Tiger-built binaries and should run fine, but MacFUSE shipped separate kext packages per OS version back then, and this repo only ships/tests against the 10.4 one. If you try it on Leopard with a 10.5-specific MacFUSE build, it might work, but no promises — let me know how it goes either way.
+
 ## Download
 
 Get the latest release (`exfat-tiger-ppc.zip`, app + CLI tools bundled together) here:
