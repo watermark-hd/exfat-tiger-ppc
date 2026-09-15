@@ -22,6 +22,29 @@ static NSString *JPStringFromCodes(const unsigned short *codes, unsigned count)
     return [NSString stringWithCharacters:buffer length:count];
 }
 
+/*
+ * No .lproj bundles / NSLocalizedString here (no nib, no Xcode project, keeping
+ * the build dead simple per BUILDING.md) -- just check the user's preferred
+ * language directly and pick a plain-ASCII English string instead of the
+ * Japanese one when it's not Japanese. Falls back to English on any failure.
+ */
+static BOOL IsJapaneseSystem(void)
+{
+    NSArray *languages = [[NSUserDefaults standardUserDefaults] objectForKey:@"AppleLanguages"];
+    NSString *primary;
+    if ([languages count] == 0) return NO;
+    primary = [languages objectAtIndex:0];
+    return [primary hasPrefix:@"ja"];
+}
+
+static NSString *L(const unsigned short *jaCodes, unsigned jaCount, NSString *en)
+{
+    if (IsJapaneseSystem()) {
+        return JPStringFromCodes(jaCodes, jaCount);
+    }
+    return en;
+}
+
 static const unsigned short kCodesEject[]        = {0x53d6, 0x308a, 0x51fa, 0x3059}; /* 取り出す */
 static const unsigned short kCodesMount[]        = {0x30de, 0x30a6, 0x30f3, 0x30c8}; /* マウント */
 static const unsigned short kCodesQuit[]         = {0x7d42, 0x4e86};                 /* 終了 */
@@ -159,10 +182,23 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
     return YES;
 }
 
+/* "GB" -> YES, "14.4" or "disk6s1" -> NO. diskutil always prints size as a
+   plain number token immediately followed by one of these unit tokens. */
+- (BOOL)isSizeUnitToken:(NSString *)token
+{
+    NSString *lower = [token lowercaseString];
+    return [lower isEqualToString:@"bytes"] || [lower isEqualToString:@"kb"] ||
+           [lower isEqualToString:@"mb"] || [lower isEqualToString:@"gb"] ||
+           [lower isEqualToString:@"tb"] || [lower isEqualToString:@"pb"];
+}
+
 /*
  * Runs `diskutil list` ONCE (not diskutil info per-disk) and returns an array of
  * two-element arrays [identifier, detail] for partitions whose type looks like
- * NTFS or FAT (exFAT drives commonly show up mislabeled as "Windows_NTFS").
+ * NTFS or FAT (exFAT drives commonly show up mislabeled as "Windows_NTFS" on an
+ * MBR disk, or "Microsoft Basic Data" on a GPT one -- both are the generic
+ * "some Windows filesystem" label, since Mac OS X can't tell exFAT apart from
+ * its neighbors without actually reading it).
  *
  * Deliberately avoids `diskutil info <id>` in a loop: calling it once per partition
  * can force every attached disk to spin up/respond individually, which stalled the
@@ -181,14 +217,17 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
         NSRange colonRange;
         NSString *afterColon;
         NSArray *tokens;
+        unsigned tokenCount;
         NSString *identifier;
         NSString *type;
         NSString *lowerType;
+        NSString *detail;
         BOOL looksLikeCandidate;
 
         if ([line length] == 0) continue;
 
-        /* rows we want look like "0: Windows_NTFS   14.4 GB   disk6s1" */
+        /* rows we want look like "0: Windows_NTFS   14.4 GB   disk6s1", but the
+           TYPE column can itself be multiple words (e.g. "Microsoft Basic Data") */
         colonRange = [line rangeOfString:@":"];
         if (colonRange.location == NSNotFound) continue;
         if (colonRange.location == 0) continue;
@@ -206,23 +245,28 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
 
         afterColon = [line substringFromIndex:colonRange.location + 1];
         tokens = [self tokenizeWhitespace:afterColon];
-        if ([tokens count] < 2) continue;
+        tokenCount = [tokens count];
+        if (tokenCount < 4) continue; /* need at least: type, size, unit, identifier */
 
-        identifier = [tokens lastObject];
+        identifier = [tokens objectAtIndex:tokenCount - 1];
         if (![self isValidPartitionIdentifier:identifier]) continue;
 
-        type = [tokens objectAtIndex:0];
+        /* the size unit anchors where the type field ends, so the type can be
+           recovered in full no matter how many words it's made of */
+        if (![self isSizeUnitToken:[tokens objectAtIndex:tokenCount - 2]]) continue;
+
+        type = [[tokens subarrayWithRange:NSMakeRange(0, tokenCount - 3)] componentsJoinedByString:@" "];
+        if ([type length] == 0) continue;
+
         lowerType = [type lowercaseString];
         looksLikeCandidate = ([lowerType rangeOfString:@"ntfs"].location != NSNotFound) ||
-                              ([lowerType rangeOfString:@"fat"].location != NSNotFound);
+                              ([lowerType rangeOfString:@"fat"].location != NSNotFound) ||
+                              ([lowerType rangeOfString:@"microsoft basic data"].location != NSNotFound);
         if (!looksLikeCandidate) continue;
 
-        {
-            /* everything between the type and the identifier (name/size) as a label */
-            NSRange middleRange = NSMakeRange(1, [tokens count] - 2);
-            NSString *detail = [[tokens subarrayWithRange:middleRange] componentsJoinedByString:@" "];
-            [result addObject:[NSArray arrayWithObjects:identifier, detail, nil]];
-        }
+        detail = [NSString stringWithFormat:@"%@ %@",
+                  [tokens objectAtIndex:tokenCount - 3], [tokens objectAtIndex:tokenCount - 2]];
+        [result addObject:[NSArray arrayWithObjects:identifier, detail, nil]];
     }
     return result;
 }
@@ -318,14 +362,14 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
     if ([mounted count] > 0) {
         NSEnumerator *ke = [mounted keyEnumerator];
         NSString *mIdent;
-        NSMenuItem *header = [[NSMenuItem alloc] initWithTitle:JPStringFromCodes(kCodesEject, 4) action:NULL keyEquivalent:@""];
+        NSMenuItem *header = [[NSMenuItem alloc] initWithTitle:L(kCodesEject, 4, @"Eject") action:NULL keyEquivalent:@""];
         [header setEnabled:NO];
         [menu addItem:header];
         [header release];
 
         while ((mIdent = [ke nextObject]) != nil) {
             NSString *mp = [mounted objectForKey:mIdent];
-            NSString *title = [NSString stringWithFormat:@"%@: %@", JPStringFromCodes(kCodesEject, 4), mIdent];
+            NSString *title = [NSString stringWithFormat:@"%@: %@", L(kCodesEject, 4, @"Eject"), mIdent];
             NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title
                                                             action:@selector(unmountAction:)
                                                      keyEquivalent:@""];
@@ -340,7 +384,7 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
     if ([candidates count] > 0) {
         NSEnumerator *ce = [candidates objectEnumerator];
         NSArray *c;
-        NSMenuItem *header2 = [[NSMenuItem alloc] initWithTitle:JPStringFromCodes(kCodesMount, 4) action:NULL keyEquivalent:@""];
+        NSMenuItem *header2 = [[NSMenuItem alloc] initWithTitle:L(kCodesMount, 4, @"Mount") action:NULL keyEquivalent:@""];
         [header2 setEnabled:NO];
         [menu addItem:header2];
         [header2 release];
@@ -348,7 +392,7 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
         while ((c = [ce nextObject]) != nil) {
             NSString *cIdent = [c objectAtIndex:0];
             NSString *size = [c objectAtIndex:1];
-            NSString *title = [NSString stringWithFormat:@"%@: %@ (%@)", JPStringFromCodes(kCodesMount, 4), cIdent, size];
+            NSString *title = [NSString stringWithFormat:@"%@: %@ (%@)", L(kCodesMount, 4, @"Mount"), cIdent, size];
             NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title
                                                             action:@selector(mountAction:)
                                                      keyEquivalent:@""];
@@ -361,7 +405,10 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
     }
 
     if ([mounted count] == 0 && [candidates count] == 0) {
-        NSMenuItem *empty = [[NSMenuItem alloc] initWithTitle:[@"exFAT" stringByAppendingString:JPStringFromCodes(kCodesNoDriveTail, 12)]
+        NSString *emptyTitle = IsJapaneseSystem()
+            ? [@"exFAT" stringByAppendingString:JPStringFromCodes(kCodesNoDriveTail, 12)]
+            : @"No exFAT drives found";
+        NSMenuItem *empty = [[NSMenuItem alloc] initWithTitle:emptyTitle
                                                          action:NULL
                                                   keyEquivalent:@""];
         [empty setEnabled:NO];
@@ -371,7 +418,7 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
     }
 
     {
-        NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:JPStringFromCodes(kCodesQuit, 2)
+        NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:L(kCodesQuit, 2, @"Quit")
                                                             action:@selector(quitAction:)
                                                      keyEquivalent:@""];
         [quitItem setTarget:self];
@@ -442,7 +489,7 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
 
     mounted = [self currentMountsUnderBase];
     if ([mounted objectForKey:identifier] == nil) {
-        NSAlert *alert = [NSAlert alertWithMessageText:JPStringFromCodes(kCodesMountFail, 11)
+        NSAlert *alert = [NSAlert alertWithMessageText:L(kCodesMountFail, 11, @"Failed to mount")
                                           defaultButton:@"OK"
                                         alternateButton:nil
                                             otherButton:nil
@@ -472,7 +519,7 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
     }
 
     if (stillMounted) {
-        NSAlert *alert = [NSAlert alertWithMessageText:JPStringFromCodes(kCodesEjectFail, 11)
+        NSAlert *alert = [NSAlert alertWithMessageText:L(kCodesEjectFail, 11, @"Failed to eject")
                                           defaultButton:@"OK"
                                         alternateButton:nil
                                             otherButton:nil
