@@ -1,4 +1,7 @@
 #import "AppDelegate.h"
+#import <Security/Security.h>
+#import <sys/param.h>
+#import <sys/mount.h>
 
 #define MOUNT_EXFAT_PATH @"/usr/local/sbin/mount.exfat"
 #define UMOUNT_PATH @"/sbin/umount"
@@ -57,6 +60,16 @@ static const unsigned short kCodesMountFail[]    = {0x30de, 0x30a6, 0x30f3, 0x30
 static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x3057, 0x306b,
                                                      0x5931, 0x6557, 0x3057, 0x307e, 0x3057,
                                                      0x305f};                         /* 取り出しに失敗しました */
+static const unsigned short kCodesCLIMissing[]   = {0x30B3, 0x30DE, 0x30F3, 0x30C9, 0x30E9,
+                                                     0x30A4, 0x30F3, 0x30C4, 0x30FC, 0x30EB,
+                                                     0x304C, 0x898B, 0x3064, 0x304B, 0x308A,
+                                                     0x307E, 0x305B, 0x3093};         /* コマンドラインツールが見つかりません */
+static const unsigned short kCodesInstallFailed[] = {0x30B3, 0x30DE, 0x30F3, 0x30C9, 0x30E9,
+                                                      0x30A4, 0x30F3, 0x30C4, 0x30FC, 0x30EB,
+                                                      0x3092, 0x30A4, 0x30F3, 0x30B9, 0x30C8,
+                                                      0x30FC, 0x30EB, 0x3067, 0x304D, 0x307E,
+                                                      0x305B, 0x3093, 0x3067, 0x3057, 0x305F};
+                                                     /* コマンドラインツールをインストールできませんでした */
 
 @implementation AppDelegate
 
@@ -123,6 +136,118 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
         output = @"";
     }
     return output;
+}
+
+#pragma mark - CLI tools install
+
+/*
+ * The CLI tools ship as a `bin/` folder sitting next to the .app in the release
+ * zip (same layout install.sh expects: `$(dirname "$0")/bin`). Finding it this
+ * way means the app can install them itself without needing to know where the
+ * user extracted the zip.
+ */
+- (NSString *)siblingBinDir
+{
+    NSString *appDir = [[[NSBundle mainBundle] bundlePath] stringByDeletingLastPathComponent];
+    return [appDir stringByAppendingPathComponent:@"bin"];
+}
+
+/*
+ * Runs the same copy/symlink steps as install.sh, elevated via
+ * AuthorizationExecuteWithPrivileges -- the old, pre-SMJobBless way to ask for
+ * admin rights from a GUI app, but it's still there on Tiger and needs no
+ * separate privileged helper tool, which fits this project's "no moving parts"
+ * approach. AuthorizationExecuteWithPrivileges itself just forks the tool and
+ * returns; reading its pipe to EOF is the standard way to actually wait for it.
+ */
+- (BOOL)installCLIToolsFromBinDir:(NSString *)binDir
+{
+    AuthorizationItem right = {kAuthorizationRightExecute, 0, NULL, 0};
+    AuthorizationRights rights = {1, &right};
+    AuthorizationFlags flags = kAuthorizationFlagDefaults |
+                                kAuthorizationFlagInteractionAllowed |
+                                kAuthorizationFlagPreAuthorize |
+                                kAuthorizationFlagExtendRights;
+    AuthorizationRef authRef;
+    OSStatus status;
+    NSString *script;
+    const char *tool = "/bin/sh";
+    char *args[3];
+    FILE *pipe = NULL;
+
+    status = AuthorizationCreate(&rights, kAuthorizationEmptyEnvironment, flags, &authRef);
+    if (status != errAuthorizationSuccess) {
+        return NO;
+    }
+
+    script = [NSString stringWithFormat:
+        @"set -e; mkdir -p /usr/local/sbin; "
+         "cp '%@/mount.exfat-fuse' '%@/exfatfsck' '%@/mkexfatfs' '%@/exfatlabel' '%@/dumpexfat' '%@/exfatattrib' /usr/local/sbin/; "
+         "chmod 755 /usr/local/sbin/mount.exfat-fuse /usr/local/sbin/exfatfsck /usr/local/sbin/mkexfatfs /usr/local/sbin/exfatlabel /usr/local/sbin/dumpexfat /usr/local/sbin/exfatattrib; "
+         "ln -sf mount.exfat-fuse /usr/local/sbin/mount.exfat; "
+         "ln -sf exfatfsck /usr/local/sbin/fsck.exfat; "
+         "ln -sf mkexfatfs /usr/local/sbin/mkfs.exfat",
+        binDir, binDir, binDir, binDir, binDir, binDir];
+
+    args[0] = "-c";
+    args[1] = (char *)[script UTF8String];
+    args[2] = NULL;
+
+    status = AuthorizationExecuteWithPrivileges(authRef, tool, kAuthorizationFlagDefaults, args, &pipe);
+    if (pipe != NULL) {
+        char buf[256];
+        while (fread(buf, 1, sizeof(buf), pipe) > 0) { }
+        fclose(pipe);
+    }
+
+    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+    return (status == errAuthorizationSuccess);
+}
+
+/*
+ * Called right before a mount attempt. Returns YES if the CLI tools are ready
+ * to use (already installed, or just got installed). Returns NO if the user
+ * cancelled the admin prompt (silently -- they already saw that dialog and
+ * said no, no need to pile another alert on top) or if something's actually
+ * wrong (missing bin/, or the install itself failed), in which case an alert
+ * explains what happened.
+ */
+- (BOOL)ensureCLIToolsInstalled
+{
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *binDir;
+    BOOL isDir = NO;
+
+    if ([fm fileExistsAtPath:MOUNT_EXFAT_PATH]) {
+        return YES;
+    }
+
+    binDir = [self siblingBinDir];
+    if (![fm fileExistsAtPath:binDir isDirectory:&isDir] || !isDir) {
+        NSAlert *alert = [NSAlert alertWithMessageText:L(kCodesCLIMissing, 18, @"exFAT command line tools not found")
+                                          defaultButton:@"OK"
+                                        alternateButton:nil
+                                            otherButton:nil
+                              informativeTextWithFormat:@"%@", binDir];
+        [alert runModal];
+        return NO;
+    }
+
+    if (![self installCLIToolsFromBinDir:binDir]) {
+        return NO; /* most likely the user cancelled the admin password prompt */
+    }
+
+    if (![fm fileExistsAtPath:MOUNT_EXFAT_PATH]) {
+        NSAlert *alert = [NSAlert alertWithMessageText:L(kCodesInstallFailed, 25, @"Couldn't install the command line tools")
+                                          defaultButton:@"OK"
+                                        alternateButton:nil
+                                            otherButton:nil
+                              informativeTextWithFormat:@"%@", binDir];
+        [alert runModal];
+        return NO;
+    }
+
+    return YES;
 }
 
 #pragma mark - diskutil / mount parsing
@@ -339,6 +464,28 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
     return result;
 }
 
+/*
+ * Get Info on the Desktop symlink can't show Capacity/Available for this mount:
+ * "-o nobrowse" (see mountAction:) deliberately keeps it out of DiskArbitration
+ * to avoid the old MacFUSE ghost-icon bug, but that also means Finder never
+ * recognizes the mount point as a real volume, symlink or not. Showing free/used
+ * space right in the menu sidesteps Finder entirely instead of fighting it.
+ */
+- (NSString *)freeSpaceStringForMountPoint:(NSString *)mountPoint
+{
+    struct statfs fsInfo;
+    double freeGB;
+    double totalGB;
+
+    if (statfs([mountPoint fileSystemRepresentation], &fsInfo) != 0) {
+        return nil;
+    }
+
+    freeGB = ((double)fsInfo.f_bavail * (double)fsInfo.f_bsize) / (1024.0 * 1024.0 * 1024.0);
+    totalGB = ((double)fsInfo.f_blocks * (double)fsInfo.f_bsize) / (1024.0 * 1024.0 * 1024.0);
+    return [NSString stringWithFormat:@"%.1f/%.1f GB free", freeGB, totalGB];
+}
+
 #pragma mark - Menu
 
 - (void)statusItemClicked:(id)sender
@@ -369,7 +516,10 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
 
         while ((mIdent = [ke nextObject]) != nil) {
             NSString *mp = [mounted objectForKey:mIdent];
-            NSString *title = [NSString stringWithFormat:@"%@: %@", L(kCodesEject, 4, @"Eject"), mIdent];
+            NSString *freeSpace = [self freeSpaceStringForMountPoint:mp];
+            NSString *title = (freeSpace != nil)
+                ? [NSString stringWithFormat:@"%@: %@ (%@)", L(kCodesEject, 4, @"Eject"), mIdent, freeSpace]
+                : [NSString stringWithFormat:@"%@: %@", L(kCodesEject, 4, @"Eject"), mIdent];
             NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title
                                                             action:@selector(unmountAction:)
                                                      keyEquivalent:@""];
@@ -464,6 +614,10 @@ static const unsigned short kCodesEjectFail[]    = {0x53d6, 0x308a, 0x51fa, 0x30
     BOOL isDir = NO;
     NSString *output;
     NSDictionary *mounted;
+
+    if (![self ensureCLIToolsInstalled]) {
+        return;
+    }
 
     if (![fm fileExistsAtPath:mountPoint isDirectory:&isDir]) {
         [fm createDirectoryAtPath:mountPoint attributes:nil];

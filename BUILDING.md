@@ -35,7 +35,7 @@ No Xcode project, no nib file — it's three small Objective-C files, compiled d
 
 ```sh
 cd src
-gcc -Wall -framework Cocoa -o exFATMenu main.m AppDelegate.m
+gcc -Wall -framework Cocoa -framework Security -o exFATMenu main.m AppDelegate.m
 mkdir -p "exFAT Menu.app/Contents/MacOS" "exFAT Menu.app/Contents/Resources"
 cp Info.plist "exFAT Menu.app/Contents/Info.plist"
 cp exFATMenu "exFAT Menu.app/Contents/MacOS/exFATMenu"

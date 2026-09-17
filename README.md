@@ -56,6 +56,10 @@ A few things that weren't documented anywhere I could find, in case they save so
 
 ## Changelog
 
+**v1.2** (2026-09-17)
+- The app now installs the CLI tools itself (prompting for an admin password) if they're missing, instead of requiring you to run `install.sh` in Terminal first. / CLIツールが未インストールの場合、アプリ自身が管理者パスワードを求めて自動インストールするように（これまでは事前にターミナルで`install.sh`を実行する必要があった）
+- The "Eject" menu item now shows free/total space for the mounted drive, since Finder's Get Info can't show Capacity for this kind of mount (see Technical notes). / 「取り出す」メニューにマウント中ドライブの空き容量/総容量を表示するように（この種のマウントはFinderの情報を見るで容量が出せないため、詳細は「技術メモ」参照）
+
 **v1.1** (2026-09-15)
 - Menu bar UI now shows English when the system language isn't Japanese (was Japanese-only before). / メニューバーのUIを英語対応（システム言語が日本語以外なら英語表示に、これまでは日本語決め打ちだった）
 - Fixed drives on GPT-partitioned disks (type `Microsoft Basic Data`) not being detected at all — `diskutil list` parsing assumed the type column was always a single word. / GPTパーティション上のドライブ（`Microsoft Basic Data`など）が検出されない不具合を修正（`diskutil list`のパースがtype列を常に1単語と仮定していたため）
