@@ -35,8 +35,12 @@ Get the latest release (`exfat-tiger-ppc.zip`, app + CLI tools bundled together)
 ## Install
 
 1. Install MacFUSE Core 10.4-1.7.0 (link above), reboot if it asks.
-2. Run `install.sh` from this folder (it just copies the CLI tools into `/usr/local/sbin` — read it first if you don't trust random shell scripts, it's short).
-3. Drag `exFAT Menu.app` to `/Applications` or wherever, double-click it. It lives in the menu bar only, no Dock icon.
+2. From inside this extracted folder (don't move `exFAT Menu.app` out yet), double-click it and try mounting a drive. First time, it'll ask for an admin password and install the CLI tools (`bin/`) into `/usr/local/sbin` on its own — no Terminal needed (as of v1.2). It lives in the menu bar only, no Dock icon.
+3. After that first successful install, the CLI tools are on your system for good, so you can move `exFAT Menu.app` to `/Applications` or wherever you like.
+
+*(If you skip straight to step 3 before ever launching from inside this folder, the app won't find `bin/` next to it and can't install anything — go back to step 2 first, from inside the extracted folder.)*
+
+日本語: 1. 上記のMacFUSE Core 10.4-1.7.0をインストール（再起動を求められたら再起動）。2. この解凍したフォルダの中から（`exFAT Menu.app`をまだ移動しないで）そのままダブルクリックして起動し、ドライブのマウントを試してください。初回は管理者パスワードを求められ、CLIツール（`bin/`）が自動で`/usr/local/sbin`にインストールされます（v1.2以降、ターミナル操作不要）。3. 一度インストールが成功すれば、CLIツールはシステムに恒久的に入るので、その後は`exFAT Menu.app`を`アプリケーション`フォルダなど好きな場所に移動して構いません。（先に3を行い、このフォルダの中から一度も起動しないままアプリを移動してしまうと、`bin/`が見つからずインストールできません。その場合は解凍したフォルダの中から起動し直してください。）
 
 ## Using it
 
