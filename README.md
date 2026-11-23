@@ -30,7 +30,7 @@ Turns out the pieces to fix this already existed (old MacFUSE 1.7.0 built for 10
 Get the latest release (`exfat-tiger-ppc.zip`, app + CLI tools bundled together) here:
 
 - https://github.com/watermark-hd/exfat-tiger-ppc/releases/latest
-- On AquaFox or other old/vintage browsers, use this link instead (lighter page, same download): https://github.com/watermark-hd/exfat-tiger-ppc/releases/expanded_assets/v1.0
+- On AquaFox or other old/vintage browsers, use this link instead (lighter page, same download): https://github.com/watermark-hd/exfat-tiger-ppc/releases/expanded_assets/v1.3
 
 ## Install
 
