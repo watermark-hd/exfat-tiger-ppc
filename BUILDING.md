@@ -35,10 +35,12 @@ No Xcode project, no nib file — it's three small Objective-C files, compiled d
 
 ```sh
 cd src
-gcc -Wall -framework Cocoa -framework Security -o exFATMenu main.m AppDelegate.m
+gcc -Wall -isysroot /Developer/SDKs/MacOSX10.4u.sdk -framework Cocoa -framework Security -o exFATMenu main.m AppDelegate.m
 mkdir -p "exFAT Menu.app/Contents/MacOS" "exFAT Menu.app/Contents/Resources"
 cp Info.plist "exFAT Menu.app/Contents/Info.plist"
 cp exFATMenu "exFAT Menu.app/Contents/MacOS/exFATMenu"
 cp ../icon/AppIcon.icns "exFAT Menu.app/Contents/Resources/AppIcon.icns"
 printf 'APPL?xfa' > "exFAT Menu.app/Contents/PkgInfo"
 ```
+
+The `-isysroot` is needed on some Tiger installs: if Xcode 2.5 was installed without the system-wide headers, `/System/Library/Frameworks/Cocoa.framework` has no `Headers` folder and plain `gcc` fails with `Cocoa/Cocoa.h: No such file or directory`. The 10.4u SDK always has them.

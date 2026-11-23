@@ -7,6 +7,9 @@
 #define UMOUNT_PATH @"/sbin/umount"
 #define DISKUTIL_PATH @"/usr/sbin/diskutil"
 #define MOUNT_PATH @"/sbin/mount"
+#define MKFS_EXFAT_PATH "/usr/local/sbin/mkfs.exfat"
+/* exFAT のボリュームラベルは UTF-16 で最大15文字 */
+#define EXFAT_LABEL_MAX 15
 
 /*
  * Japanese UI strings, built at runtime from explicit UTF-16 code points instead
@@ -17,9 +20,10 @@
  */
 static NSString *JPStringFromCodes(const unsigned short *codes, unsigned count)
 {
-    unichar buffer[64];
+    unichar buffer[128];
     unsigned i;
-    for (i = 0; i < count && i < 64; i++) {
+    if (count > 128) count = 128;
+    for (i = 0; i < count; i++) {
         buffer[i] = (unichar)codes[i];
     }
     return [NSString stringWithCharacters:buffer length:count];
@@ -70,6 +74,57 @@ static const unsigned short kCodesInstallFailed[] = {0x30B3, 0x30DE, 0x30F3, 0x3
                                                       0x30FC, 0x30EB, 0x3067, 0x304D, 0x307E,
                                                       0x305B, 0x3093, 0x3067, 0x3057, 0x305F};
                                                      /* コマンドラインツールをインストールできませんでした */
+
+/* 文字数を手で数え間違えないよう、配列の長さは sizeof から求める */
+#define LC(codes, en) L((codes), (unsigned)(sizeof(codes) / sizeof((codes)[0])), (en))
+#define JC(codes) JPStringFromCodes((codes), (unsigned)(sizeof(codes) / sizeof((codes)[0])))
+
+static const unsigned short kCodesFormat[] = {
+    0x30d5, 0x30a9, 0x30fc, 0x30de, 0x30c3, 0x30c8}; /* フォーマット */
+static const unsigned short kCodesFormatAskTail[] = {
+    0x3092, 0x0065, 0x0078, 0x0046, 0x0041, 0x0054, 0x3067, 0x30d5,
+    0x30a9, 0x30fc, 0x30de, 0x30c3, 0x30c8, 0x3057, 0x307e, 0x3059,
+    0x304b, 0xff1f}; /* をexFATでフォーマットしますか？ */
+static const unsigned short kCodesFormatWarn[] = {
+    0x3053, 0x306e, 0x30c9, 0x30e9, 0x30a4, 0x30d6, 0x306e, 0x5185,
+    0x5bb9, 0x306f, 0x3059, 0x3079, 0x3066, 0x6d88, 0x53bb, 0x3055,
+    0x308c, 0x307e, 0x3059, 0x3002, 0x5143, 0x306b, 0x623b, 0x3059,
+    0x3053, 0x3068, 0x306f, 0x3067, 0x304d, 0x307e, 0x305b, 0x3093,
+    0x3002}; /* このドライブの内容はすべて消去されます。元に戻すことはできません。 */
+static const unsigned short kCodesVolumeName[] = {
+    0x30dc, 0x30ea, 0x30e5, 0x30fc, 0x30e0, 0x540d, 0xff1a}; /* ボリューム名： */
+static const unsigned short kCodesCancel[] = {
+    0x30ad, 0x30e3, 0x30f3, 0x30bb, 0x30eb}; /* キャンセル */
+static const unsigned short kCodesEraseFormat[] = {
+    0x6d88, 0x53bb, 0x3057, 0x3066, 0x30d5, 0x30a9, 0x30fc, 0x30de,
+    0x30c3, 0x30c8}; /* 消去してフォーマット */
+static const unsigned short kCodesFormatFail[] = {
+    0x30d5, 0x30a9, 0x30fc, 0x30de, 0x30c3, 0x30c8, 0x306b, 0x5931,
+    0x6557, 0x3057, 0x307e, 0x3057, 0x305f}; /* フォーマットに失敗しました */
+static const unsigned short kCodesFormatDone[] = {
+    0x30d5, 0x30a9, 0x30fc, 0x30de, 0x30c3, 0x30c8, 0x304c, 0x5b8c,
+    0x4e86, 0x3057, 0x307e, 0x3057, 0x305f}; /* フォーマットが完了しました */
+static const unsigned short kCodesFormatRefused[] = {
+    0x3053, 0x306e, 0x30c9, 0x30e9, 0x30a4, 0x30d6, 0x306f, 0x30d5,
+    0x30a9, 0x30fc, 0x30de, 0x30c3, 0x30c8, 0x3067, 0x304d, 0x307e,
+    0x305b, 0x3093}; /* このドライブはフォーマットできません */
+static const unsigned short kCodesRefuseBoot[] = {
+    0x8d77, 0x52d5, 0x30c7, 0x30a3, 0x30b9, 0x30af, 0x306f, 0x30d5,
+    0x30a9, 0x30fc, 0x30de, 0x30c3, 0x30c8, 0x3067, 0x304d, 0x307e,
+    0x305b, 0x3093, 0x3002}; /* 起動ディスクはフォーマットできません。 */
+static const unsigned short kCodesRefuseInternal[] = {
+    0x5b89, 0x5168, 0x306e, 0x305f, 0x3081, 0x3001, 0x0055, 0x0053,
+    0x0042, 0x307e, 0x305f, 0x306f, 0x0046, 0x0069, 0x0072, 0x0065,
+    0x0057, 0x0069, 0x0072, 0x0065, 0x63a5, 0x7d9a, 0x306e, 0x5916,
+    0x4ed8, 0x3051, 0x30c9, 0x30e9, 0x30a4, 0x30d6, 0x306e, 0x307f,
+    0x30d5, 0x30a9, 0x30fc, 0x30de, 0x30c3, 0x30c8, 0x3067, 0x304d,
+    0x307e, 0x3059, 0x3002}; /* 安全のため、USBまたはFireWire接続の外付けドライブのみフォーマットできます。 */
+static const unsigned short kCodesLabelTooLong[] = {
+    0x30dc, 0x30ea, 0x30e5, 0x30fc, 0x30e0, 0x540d, 0x306f, 0x0031,
+    0x0035, 0x6587, 0x5b57, 0x4ee5, 0x5185, 0x306b, 0x3057, 0x3066,
+    0x304f, 0x3060, 0x3055, 0x3044}; /* ボリューム名は15文字以内にしてください */
+static const unsigned short kCodesClose[] = {
+    0x9589, 0x3058, 0x308b}; /* 閉じる */
 
 @implementation AppDelegate
 
@@ -391,7 +446,8 @@ static const unsigned short kCodesInstallFailed[] = {0x30B3, 0x30DE, 0x30F3, 0x3
 
         detail = [NSString stringWithFormat:@"%@ %@",
                   [tokens objectAtIndex:tokenCount - 3], [tokens objectAtIndex:tokenCount - 2]];
-        [result addObject:[NSArray arrayWithObjects:identifier, detail, nil]];
+        /* 3番目の要素はパーティション種別（フォーマット対象の判定に使う） */
+        [result addObject:[NSArray arrayWithObjects:identifier, detail, type, nil]];
     }
     return result;
 }
@@ -554,6 +610,46 @@ static const unsigned short kCodesInstallFailed[] = {0x30B3, 0x30DE, 0x30F3, 0x3
         [menu addItem:[NSMenuItem separatorItem]];
     }
 
+    /*
+     * フォーマット候補：マウント中かどうかに関わらず、パーティション種別が
+     * exFAT と整合するもの（Windows_NTFS / Microsoft Basic Data）だけを並べる。
+     * FAT32 等は種別（MBR 0x0B/0x0C など）が exFAT と食い違ったままになるため対象外。
+     */
+    {
+        NSEnumerator *fe = [scanned objectEnumerator];
+        NSArray *f;
+        BOOL addedHeader = NO;
+
+        while ((f = [fe nextObject]) != nil) {
+            NSString *fIdent = [f objectAtIndex:0];
+            NSString *fSize = [f objectAtIndex:1];
+            NSMenuItem *item;
+
+            if (![self isFormattablePartitionType:[f objectAtIndex:2]]) continue;
+
+            if (!addedHeader) {
+                NSMenuItem *header3 = [[NSMenuItem alloc] initWithTitle:LC(kCodesFormat, @"Format")
+                                                                  action:NULL keyEquivalent:@""];
+                [header3 setEnabled:NO];
+                [menu addItem:header3];
+                [header3 release];
+                addedHeader = YES;
+            }
+
+            item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%@: %@ (%@)...",
+                                                      LC(kCodesFormat, @"Format"), fIdent, fSize]
+                                              action:@selector(formatAction:)
+                                       keyEquivalent:@""];
+            [item setTarget:self];
+            [item setRepresentedObject:f];
+            [menu addItem:item];
+            [item release];
+        }
+        if (addedHeader) {
+            [menu addItem:[NSMenuItem separatorItem]];
+        }
+    }
+
     if ([mounted count] == 0 && [candidates count] == 0) {
         NSString *emptyTitle = IsJapaneseSystem()
             ? [@"exFAT" stringByAppendingString:JPStringFromCodes(kCodesNoDriveTail, 12)]
@@ -607,7 +703,11 @@ static const unsigned short kCodesInstallFailed[] = {0x30B3, 0x30DE, 0x30F3, 0x3
 
 - (void)mountAction:(id)sender
 {
-    NSString *identifier = [sender representedObject];
+    [self mountIdentifier:[sender representedObject]];
+}
+
+- (void)mountIdentifier:(NSString *)identifier
+{
     NSString *devicePath = [NSString stringWithFormat:@"/dev/%@", identifier];
     NSString *mountPoint = [mountBaseDir stringByAppendingPathComponent:identifier];
     NSFileManager *fm = [NSFileManager defaultManager];
@@ -681,6 +781,311 @@ static const unsigned short kCodesInstallFailed[] = {0x30B3, 0x30DE, 0x30F3, 0x3
         [alert runModal];
     } else {
         [self removeDesktopLinkForIdentifier:identifier];
+    }
+}
+
+#pragma mark - Format
+
+/* exFAT と整合するパーティション種別か（＝ mkfs.exfat だけで済むか） */
+- (BOOL)isFormattablePartitionType:(NSString *)type
+{
+    NSString *lower = [type lowercaseString];
+    return [lower isEqualToString:@"windows_ntfs"] ||
+           [lower isEqualToString:@"microsoft basic data"];
+}
+
+/* "disk1s1" -> "disk1" */
+- (NSString *)wholeDiskForIdentifier:(NSString *)identifier
+{
+    NSRange r = [identifier rangeOfString:@"s" options:NSBackwardsSearch];
+    if (r.location == NSNotFound || r.location < 4) return identifier;
+    return [identifier substringToIndex:r.location];
+}
+
+/* 起動ボリューム（/）が載っているディスク（例: "disk0"）。取得できなければ nil */
+- (NSString *)bootWholeDisk
+{
+    struct statfs fsInfo;
+    NSString *from;
+    if (statfs("/", &fsInfo) != 0) return nil;
+    from = [NSString stringWithUTF8String:fsInfo.f_mntfromname];
+    if (![from hasPrefix:@"/dev/"]) return nil;
+    return [self wholeDiskForIdentifier:[from lastPathComponent]];
+}
+
+/*
+ * `diskutil info` は全ディスクのループでは絶対に呼ばない（スリープ中の外付けを
+ * 全部起こしてマシンが固まった前歴あり）。ここではユーザーが選んだディスク1台に
+ * 対して1回だけ呼ぶ。Protocol が USB / FireWire のものだけを「外付け」と見なす。
+ */
+- (BOOL)isExternalWholeDisk:(NSString *)wholeDisk
+{
+    NSString *output = [self runTaskAtPath:DISKUTIL_PATH
+                                 arguments:[NSArray arrayWithObjects:@"info", wholeDisk, nil]];
+    NSArray *lines = [output componentsSeparatedByString:@"\n"];
+    NSEnumerator *e = [lines objectEnumerator];
+    NSString *line;
+
+    while ((line = [e nextObject]) != nil) {
+        NSString *trimmed = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        if ([trimmed hasPrefix:@"Protocol:"]) {
+            NSString *value = [[[trimmed substringFromIndex:9]
+                                stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]
+                               lowercaseString];
+            return [value isEqualToString:@"usb"] || [value isEqualToString:@"firewire"];
+        }
+    }
+    return NO; /* 判定できないものは安全側に倒して拒否 */
+}
+
+- (void)showAlert:(NSString *)message info:(NSString *)info
+{
+    NSAlert *alert = [NSAlert alertWithMessageText:message
+                                      defaultButton:@"OK"
+                                    alternateButton:nil
+                                        otherButton:nil
+                          informativeTextWithFormat:@"%@", (info != nil ? info : @"")];
+    [NSApp activateIgnoringOtherApps:YES];
+    [alert runModal];
+}
+
+/* パネル用の、編集不可・枠なしのラベルを作る */
+- (NSTextField *)labelWithFrame:(NSRect)frame text:(NSString *)text font:(NSFont *)font
+{
+    NSTextField *field = [[[NSTextField alloc] initWithFrame:frame] autorelease];
+    [field setStringValue:text];
+    [field setEditable:NO];
+    [field setSelectable:NO];
+    [field setBezeled:NO];
+    [field setBordered:NO];
+    [field setDrawsBackground:NO];
+    [field setFont:font];
+    [[field cell] setWraps:YES];
+    return field;
+}
+
+- (void)formatPanelConfirm:(id)sender
+{
+    [NSApp stopModalWithCode:NSOKButton];
+}
+
+- (void)formatPanelCancel:(id)sender
+{
+    [NSApp stopModalWithCode:NSCancelButton];
+}
+
+/*
+ * 確認パネル。Tiger の NSAlert には入力欄を付けられない（setAccessoryView: は
+ * 10.5 以降）ので自前で組む。消去は取り消せない操作なので、Return キー（既定
+ * ボタン）は「キャンセル」側に割り当てている。
+ * ユーザーが確定したらボリューム名（空文字可）を、キャンセルなら nil を返す。
+ */
+- (NSString *)runFormatPanelForIdentifier:(NSString *)identifier size:(NSString *)size
+{
+    NSPanel *panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 460, 200)
+                                                styleMask:NSTitledWindowMask
+                                                  backing:NSBackingStoreBuffered
+                                                    defer:NO];
+    NSView *content = [panel contentView];
+    NSImageView *iconView;
+    NSTextField *nameField;
+    NSButton *cancelButton;
+    NSButton *formatButton;
+    NSString *question;
+    NSString *result = nil;
+    int code;
+
+    if (IsJapaneseSystem()) {
+        question = [NSString stringWithFormat:@"%@ (%@) %@", identifier, size, JC(kCodesFormatAskTail)];
+    } else {
+        question = [NSString stringWithFormat:@"Format %@ (%@) as exFAT?", identifier, size];
+    }
+
+    [panel setTitle:LC(kCodesFormat, @"Format")];
+
+    iconView = [[[NSImageView alloc] initWithFrame:NSMakeRect(20, 116, 64, 64)] autorelease];
+    [iconView setImage:[NSApp applicationIconImage]];
+    [content addSubview:iconView];
+
+    [content addSubview:[self labelWithFrame:NSMakeRect(100, 156, 340, 24)
+                                        text:question
+                                        font:[NSFont boldSystemFontOfSize:13]]];
+    [content addSubview:[self labelWithFrame:NSMakeRect(100, 112, 340, 40)
+                                        text:LC(kCodesFormatWarn, @"Everything on this drive will be erased. This cannot be undone.")
+                                        font:[NSFont systemFontOfSize:11]]];
+    [content addSubview:[self labelWithFrame:NSMakeRect(100, 78, 110, 18)
+                                        text:LC(kCodesVolumeName, @"Volume name:")
+                                        font:[NSFont systemFontOfSize:12]]];
+
+    nameField = [[[NSTextField alloc] initWithFrame:NSMakeRect(210, 76, 230, 22)] autorelease];
+    [nameField setStringValue:@"EXFAT"];
+    [content addSubview:nameField];
+
+    cancelButton = [[[NSButton alloc] initWithFrame:NSMakeRect(340, 14, 106, 32)] autorelease];
+    [cancelButton setBezelStyle:NSRoundedBezelStyle];
+    [cancelButton setTitle:LC(kCodesCancel, @"Cancel")];
+    [cancelButton setKeyEquivalent:@"\r"];
+    [cancelButton setTarget:self];
+    [cancelButton setAction:@selector(formatPanelCancel:)];
+    [content addSubview:cancelButton];
+
+    formatButton = [[[NSButton alloc] initWithFrame:NSMakeRect(170, 14, 170, 32)] autorelease];
+    [formatButton setBezelStyle:NSRoundedBezelStyle];
+    [formatButton setTitle:LC(kCodesEraseFormat, @"Erase and Format")];
+    [formatButton setTarget:self];
+    [formatButton setAction:@selector(formatPanelConfirm:)];
+    [content addSubview:formatButton];
+
+    [panel center];
+    [panel setInitialFirstResponder:nameField];
+    [NSApp activateIgnoringOtherApps:YES];
+
+    while (YES) {
+        code = [NSApp runModalForWindow:panel];
+        if (code != NSOKButton) break;
+
+        /* ボリューム名の長さチェック（exFAT は UTF-16 で15文字まで） */
+        if ([[nameField stringValue] length] > EXFAT_LABEL_MAX) {
+            [self showAlert:LC(kCodesLabelTooLong, @"Volume name must be 15 characters or less") info:nil];
+            continue;
+        }
+        result = [[[nameField stringValue] copy] autorelease];
+        break;
+    }
+
+    [panel orderOut:nil];
+    [panel release];
+    return result;
+}
+
+/*
+ * デバイスノードは一般ユーザーには読み取り専用（brw-r-----）なので、
+ * mkfs.exfat は管理者権限で実行する。ボリューム名をシェル文字列に埋め込むと
+ * クォートの問題が出るため、"$@" の位置引数として渡す。2>&1 で stderr も
+ * パイプに流し、失敗時にその内容を表示できるようにする。
+ * AuthorizationExecuteWithPrivileges は終了コードを返さないので、成功判定は
+ * 呼び出し側で出力メッセージを見て行う。キャンセル時は nil を返す。
+ */
+- (NSString *)runMkfsForDevice:(NSString *)devicePath label:(NSString *)label
+{
+    AuthorizationItem right = {kAuthorizationRightExecute, 0, NULL, 0};
+    AuthorizationRights rights = {1, &right};
+    AuthorizationFlags flags = kAuthorizationFlagDefaults |
+                                kAuthorizationFlagInteractionAllowed |
+                                kAuthorizationFlagPreAuthorize |
+                                kAuthorizationFlagExtendRights;
+    AuthorizationRef authRef;
+    OSStatus status;
+    char *args[8];
+    int n = 0;
+    FILE *pipe = NULL;
+    NSMutableData *data = [NSMutableData data];
+
+    status = AuthorizationCreate(&rights, kAuthorizationEmptyEnvironment, flags, &authRef);
+    if (status != errAuthorizationSuccess) {
+        return nil;
+    }
+
+    args[n++] = "-c";
+    args[n++] = "exec 2>&1; exec " MKFS_EXFAT_PATH " \"$@\"";
+    args[n++] = "mkfs.exfat"; /* sh -c では最初の追加引数が $0 になる */
+    if ([label length] > 0) {
+        args[n++] = "-n";
+        args[n++] = (char *)[label UTF8String];
+    }
+    args[n++] = (char *)[devicePath fileSystemRepresentation];
+    args[n] = NULL;
+
+    status = AuthorizationExecuteWithPrivileges(authRef, "/bin/sh", kAuthorizationFlagDefaults, args, &pipe);
+    if (pipe != NULL) {
+        char buf[256];
+        size_t got;
+        while ((got = fread(buf, 1, sizeof(buf), pipe)) > 0) {
+            [data appendBytes:buf length:got];
+        }
+        fclose(pipe);
+    }
+    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+
+    if (status != errAuthorizationSuccess) {
+        return nil; /* パスワード入力をキャンセルした等 */
+    }
+    {
+        NSString *output = [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease];
+        return (output != nil) ? output : @"";
+    }
+}
+
+- (void)formatAction:(id)sender
+{
+    NSArray *entry = [sender representedObject];
+    NSString *identifier = [entry objectAtIndex:0];
+    NSString *size = [entry objectAtIndex:1];
+    NSString *devicePath = [NSString stringWithFormat:@"/dev/%@", identifier];
+    NSString *wholeDisk = [self wholeDiskForIdentifier:identifier];
+    NSString *bootDisk = [self bootWholeDisk];
+    NSString *label;
+    NSString *mountPoint;
+    NSString *output;
+    NSAlert *doneAlert;
+
+    /* 安全チェック1：起動ディスク（取得できない場合も）は対象外 */
+    if (bootDisk == nil || [bootDisk isEqualToString:wholeDisk]) {
+        [self showAlert:LC(kCodesFormatRefused, @"This drive can't be formatted")
+                   info:LC(kCodesRefuseBoot, @"The startup disk can't be formatted.")];
+        return;
+    }
+
+    /* 安全チェック2：USB / FireWire 接続の外付けのみ */
+    if (![self isExternalWholeDisk:wholeDisk]) {
+        [self showAlert:LC(kCodesFormatRefused, @"This drive can't be formatted")
+                   info:LC(kCodesRefuseInternal, @"For safety, only external USB or FireWire drives can be formatted.")];
+        return;
+    }
+
+    if (![self ensureCLIToolsInstalled]) {
+        return;
+    }
+
+    label = [self runFormatPanelForIdentifier:identifier size:size];
+    if (label == nil) {
+        return; /* キャンセル */
+    }
+
+    /* このアプリでマウント中なら先に取り出す */
+    mountPoint = [[self currentMountsUnderBase] objectForKey:identifier];
+    if (mountPoint != nil) {
+        output = [self runTaskAtPath:UMOUNT_PATH arguments:[NSArray arrayWithObject:mountPoint]];
+        if ([[self currentMountsUnderBase] objectForKey:identifier] != nil) {
+            [self showAlert:LC(kCodesEjectFail, @"Failed to eject")
+                       info:[NSString stringWithFormat:@"%@\n\n%@", mountPoint, output]];
+            return;
+        }
+        [self removeDesktopLinkForIdentifier:identifier];
+    }
+
+    /* Tiger 内蔵の NTFS ドライバによる空マウントも外しておく */
+    [self runTaskAtPath:DISKUTIL_PATH arguments:[NSArray arrayWithObjects:@"unmount", devicePath, nil]];
+
+    output = [self runMkfsForDevice:devicePath label:label];
+    if (output == nil) {
+        return; /* 管理者パスワードのキャンセル */
+    }
+
+    if ([output rangeOfString:@"File system created successfully"].location == NSNotFound) {
+        [self showAlert:LC(kCodesFormatFail, @"Failed to format")
+                   info:[NSString stringWithFormat:@"%@\n\n%@", devicePath, output]];
+        return;
+    }
+
+    doneAlert = [NSAlert alertWithMessageText:LC(kCodesFormatDone, @"Format complete")
+                                 defaultButton:LC(kCodesMount, @"Mount")
+                               alternateButton:LC(kCodesClose, @"Close")
+                                   otherButton:nil
+                     informativeTextWithFormat:@"%@", devicePath];
+    [NSApp activateIgnoringOtherApps:YES];
+    if ([doneAlert runModal] == NSAlertDefaultReturn) {
+        [self mountIdentifier:identifier];
     }
 }
 

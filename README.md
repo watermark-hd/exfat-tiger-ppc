@@ -14,7 +14,7 @@ Turns out the pieces to fix this already existed (old MacFUSE 1.7.0 built for 10
 
 ## What's in here
 
-- **exFAT Menu.app** — menu bar utility. Click the "exFAT" item, pick a drive to mount or a mounted one to eject.
+- **exFAT Menu.app** — menu bar utility. Click the "exFAT" item, pick a drive to mount or a mounted one to eject, or format one as exFAT.
 - **bin/** — the underlying command line tools (`mount.exfat`, `fsck.exfat`, `mkfs.exfat`, `exfatlabel`, `dumpexfat`, `exfatattrib`), built from [relan/exfat](https://github.com/relan/exfat) with two small patches for this old MacFUSE (see `patches/`).
 - **src/** — the app's Objective-C source (no nib file, no Xcode project needed — it's small enough to just compile directly).
 
@@ -48,6 +48,10 @@ Plug in an exFAT drive. Tiger will complain it can't read it — ignore that dia
 
 Click "exFAT" in the menu bar → "Mount: disk_s_ (...)". A folder alias named `exFAT (disk_s_)` appears on your Desktop — that's your drive. To remove the drive, use the app's "Eject" entry first, *then* unplug (same as any other drive).
 
+To format a drive as exFAT, pick "Format: disk_s_ (...)..." from the same menu, type a volume name (max 15 characters) and click "Erase and Format". It asks for an admin password. For safety, only external USB/FireWire drives are listed and the startup disk is always refused. Also it only formats partitions that are already Windows-type (`Windows_NTFS` / `Microsoft Basic Data`) — a FAT32 or Mac (HFS+) formatted drive is not supported yet, because the partition type would also need to be changed, and that's not done here.
+
+フォーマット：同じメニューの「フォーマット: disk_s_ (...)...」を選び、ボリューム名（15文字まで）を入れて「消去してフォーマット」。管理者パスワードが必要です。安全のため、USB/FireWire接続の外付けドライブのみが対象で、起動ディスクは常に拒否します。また対象はすでにWindows系（`Windows_NTFS` / `Microsoft Basic Data`）のパーティションのみで、FAT32やMac (HFS+)のドライブは未対応です（パーティション種別の書き換えも必要になるため）。
+
 ## Technical notes, for anyone doing similar archaeology
 
 A few things that weren't documented anywhere I could find, in case they save someone else a night of debugging:
@@ -59,6 +63,9 @@ A few things that weren't documented anywhere I could find, in case they save so
 - Building this needs `autoconf`/`automake` that Tiger doesn't have — generate `./configure` on a modern Mac and copy the pre-generated tree over, or install Tigerbrew.
 
 ## Changelog
+
+**v1.3** (2026-11-24)
+- Added "Format" to the menu: erase a drive and make a fresh exFAT on it, with volume name input. External USB/FireWire drives only, startup disk is always refused. / メニューに「フォーマット」を追加（ボリューム名指定可）。USB/FireWire接続の外付けドライブのみ対象、起動ディスクは常に拒否
 
 **v1.2** (2026-09-17)
 - The app now installs the CLI tools itself (prompting for an admin password) if they're missing, instead of requiring you to run `install.sh` in Terminal first. / CLIツールが未インストールの場合、アプリ自身が管理者パスワードを求めて自動インストールするように（これまでは事前にターミナルで`install.sh`を実行する必要があった）
